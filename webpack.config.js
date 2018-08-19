@@ -7,7 +7,7 @@ const ExtractTextPlugin = require('extract-text-webpack-plugin');
 const ExtraneousFileCleanupPlugin = require('webpack-extraneous-file-cleanup-plugin');
 const HtmlWebpackExcludeAssetsPlugin = require('html-webpack-exclude-assets-plugin');
 
-const config = require(__dirname + '/config.json');
+const publicDir = '/public';
 
 module.exports = {
   entry: {
@@ -18,7 +18,7 @@ module.exports = {
   output: {
     filename: 'bundle/[name].js',
     chunkFilename: '[name].[id].lazy.js',
-    path: path.resolve(__dirname, config.publicDir),
+    path: path.resolve(__dirname, publicDir),
   },
 
   module: {
@@ -75,7 +75,7 @@ module.exports = {
 
   devServer: {
     index: 'index.html',
-    contentBase: config.publicDir,
+    contentBase: publicDir,
     noInfo: true,
     overlay: false,
     historyApiFallback: true,
@@ -89,21 +89,13 @@ module.exports = {
       {from: 'root', to: ''},
     ]),
 
-    new CleanWebpackPlugin(path.resolve(__dirname, config.publicDir)),
+    new CleanWebpackPlugin(path.resolve(__dirname, publicDir)),
 
     new HtmlWebpackExcludeAssetsPlugin(),
 
     new HtmlWebpackPlugin({
       filename: 'index.html',
       template: './view/index.pug',
-      apiUrl: `'${config.apiUrl}'`,
-      excludeAssets: [/.js/, /.css/],
-    }),
-
-    new HtmlWebpackPlugin({
-      filename: 'login.html',
-      template: './view/login.pug',
-      apiUrl: `'${config.apiUrl}'`,
       excludeAssets: [/.js/, /.css/],
     }),
 
