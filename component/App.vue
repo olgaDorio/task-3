@@ -1,55 +1,34 @@
 <template lang="pug">
   .block__container
     .block
-      h1 Input
-      h2 Devices
-      div(v-for = "device in input.devices") {{ device }}
-      h2 Rates
-      div(v-for = "rate in input.rates") {{ rate }}
-      h2 maxPower
-      div {{ input.maxPower }}
+      h2 Input
+      pre {{ JSON.stringify(input, null, "\t") }}
     .block
-      h1 Temporary
+      h2 Output
+      pre {{ JSON.stringify(consumedEnergy, null, "\t") }}
       h2 Schedule
-      div(v-for="(array, hour) in schedule") [{{ hour }}]: {{ array }}
-      h2 Rates
-      div(v-for = "(rate, hour) in rates") [{{ hour }}]: {{ rate }}
-      h2 Devices
-      template(v-for = "(object, key) in devices")
-        h3 {{ key }}
-        div {{ object }}
+      pre {{ JSON.stringify(schedule, null, "\t") }}
 </template>
 
 <script>
   import input from './../js/input';
 
-  // 7-21 - day
-
   export default {
     data() {
       return {
         input,
-        output: {
-          schedule: [],
-          consumedEnergy: {
-            value: 0,
-            devices: {},
-          },
-        },
-
         schedule: Array.from({ length: 24 }, () => ([])),
+        notifications: [],
       };
     },
 
     mounted() {
       this.push24HoursPerDayDevices();
-      this.pushDayDevices();
-    },
 
-    // first add all 24 devices
-    // then all day (filtered from biggest to lowest)
-    // then all night (filtered from biggest to lowest)
-    // then all undefined :)
+      this.push('day');
+      this.push('night');
+      this.push('anyTime');
+    },
 
     methods: {
       push24HoursPerDayDevices() {
@@ -58,22 +37,105 @@
         });
       },
 
-      pushDayDevices() {
-        this.devices.day.forEach((device) => {
-          const { duration, power } = device;
+      push(type) {
+        this.devices[type].forEach((device) => {
+          const { duration, power, id } = device;
+          const canStartAt = this.startHours(this.hours[type], power, duration);
+          const willStartAt = this.whenItWillBeCheaperToStart(canStartAt, duration);
 
-          console.log(this.filterByPowerLeft(this.dayHours, power));
+          if (!Number.isInteger(willStartAt)) {
+            this.notifications.push(`Error processing ${device.id} ${device.name}`);
+            return;
+          }
+
+          let index = 0;
+
+          while (index < duration) {
+            let scheduleIndex = willStartAt + index;
+            if (scheduleIndex > 23) {
+              scheduleIndex -= 24;
+            }
+
+            this.schedule[scheduleIndex].push(id);
+            index += 1;
+          }
         });
       },
 
-      filterByPowerLeft(indexes, power) {
-        return this.powerLeft.map((powerLeft, index) => {
-          return indexes.includes(index) && powerLeft - power >= 0 ? `${index}` : '';
-        }).filter(v => v).map(v => Number(v));
+      whenItWillBeCheaperToStart(hours, duration) {
+        const mapped = hours.map((hour) => {
+          let total = this.rates[hour];
+
+          let i = 1;
+          while (i < duration) {
+            let index = hour + 1;
+
+            if (index > 23) {
+              index -= 24;
+            }
+
+            total += this.rates[index];
+
+            i += 1;
+          }
+
+          return { hour, total };
+        });
+
+        const totalArray = mapped.map(item => item.total);
+
+        const minPrice = Math.min(...totalArray);
+        const minItem = mapped.find(item => item.total === minPrice);
+
+        return minItem ? minItem.hour : null;
+      },
+
+      startHours(indexes, power, duration) {
+        const havePowerLeft = this.powerLeft.map((powerLeft, index) => (
+          indexes.includes(index) && powerLeft - power >= 0 ? `${index}` : ''
+        )).filter(v => v).map(v => Number(v));
+
+        const canStart = havePowerLeft.filter((hour, index, array) => {
+          const indexOfEnd = index + duration;
+
+          if (hour + duration >= 24) {
+            return (hour + duration) - 24 === array[indexOfEnd - array.length];
+          }
+
+          return (hour + duration) - 1 === array[indexOfEnd - 1];
+        });
+
+        const nighty = canStart.filter(v => v >= 21 && v < 24);
+        const dayly = canStart.filter(v => v < 21);
+        const concatted = nighty.concat(dayly);
+
+        return concatted;
       },
     },
 
     computed: {
+      consumedEnergy() {
+        const devices = {};
+
+        this.schedule.forEach((ids, index) => {
+          ids.forEach((id) => {
+            const device = this.input.devices.find(item => item.id === id);
+            const { power } = device;
+            const rate = this.rates[index];
+            const price = (power * rate) / 1000;
+            devices[id] = devices[id] || 0;
+            devices[id] += price;
+          });
+        });
+
+        const values = Object.values(devices);
+
+        return {
+          devices,
+          value: values.length ? values.reduce((a, b) => a + b) : 0,
+        };
+      },
+
       devices() {
         const { devices } = this.input;
 
@@ -81,11 +143,23 @@
           day: devices.filter(device => device.mode === 'day'),
           night: devices.filter(device => device.mode === 'night'),
           dayAndNight: devices.filter(device => device.duration === 24),
-          anyTime: devices.filter(device => device.duration !== 24 && !device.mode),
+          anyTime: devices.filter(device => device.duration !== 24 && !['day', 'night'].includes(device.mode)),
         };
       },
 
-      powerLeft() { // TODO
+      hours() {
+        const isNight = index => index < 7 || index >= 21;
+        const isDay = index => !isNight(index);
+        const toInt = string => parseInt(string, 10);
+
+        const day = Object.keys(this.rates).filter(isDay).map(toInt);
+        const night = Object.keys(this.rates).filter(isNight).map(toInt);
+        const anyTime = day.concat(night);
+
+        return { day, night, anyTime };
+      },
+
+      powerLeft() {
         return this.schedule.map((ids) => {
           const used = ids.map(id => (
             this.input.devices.find(device => device.id === id).power
@@ -95,18 +169,6 @@
 
           return this.input.maxPower - used;
         });
-      },
-
-      dayHours() {
-        return this.rates.map((rate, index) => {
-          return index < 7 || index >= 21 ? '' : `${index}`;
-        }).filter(v => v).map(v => Number(v));
-      },
-
-      nightHours() {
-        return this.rates.map((rate, index) => {
-          return index < 7 || index >= 21 ? `${index}` : '';
-        }).filter(v => v).map(v => Number(v));
       },
 
       rates() {
@@ -134,10 +196,18 @@
 
   .block {
     box-sizing: border-box;
+    margin: 50px;
     width: 50%;
 
     &__container {
       display: flex;
     }
+  }
+
+  pre {
+    background: grey;
+    height: 100%;
+    max-height: 200px;
+    overflow: auto;
   }
 </style>
