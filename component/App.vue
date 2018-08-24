@@ -1,13 +1,16 @@
 <template lang="pug">
-  .block__container
-    .block
-      h2 Input
-      pre {{ JSON.stringify(input, null, "\t") }}
-    .block
-      h2 Output
-      pre {{ JSON.stringify(consumedEnergy, null, "\t") }}
-      h2 Schedule
-      pre {{ JSON.stringify(schedule, null, "\t") }}
+  .container
+    .card
+      .card__title
+        | Input
+        button(@click="toggle") {{ Object.keys(style).length ? '▼' : '▲' }}
+      pre.code(:style="style") {{ JSON.stringify(input, null, "\t") }}
+    .card
+      .card__title Output
+      pre.code {{ JSON.stringify(consumedEnergy, null, "\t") }}
+    .card
+      .card__title Schedule
+      pre.code {{ JSON.stringify(schedule, null, "\t") }}
 </template>
 
 <script>
@@ -19,6 +22,7 @@
         input,
         schedule: Array.from({ length: 24 }, () => ([])),
         notifications: [],
+        style: { height: '20vh' },
       };
     },
 
@@ -31,6 +35,14 @@
     },
 
     methods: {
+      toggle() {
+        if (Object.keys(this.style).length) {
+          this.style = {};
+        } else {
+          this.style = { height: '20vh' };
+        }
+      },
+
       push24HoursPerDayDevices() {
         this.schedule.forEach((subarray) => {
           subarray.push(...this.devices.dayAndNight.map(device => device.id));
@@ -143,7 +155,9 @@
           day: devices.filter(device => device.mode === 'day'),
           night: devices.filter(device => device.mode === 'night'),
           dayAndNight: devices.filter(device => device.duration === 24),
-          anyTime: devices.filter(device => device.duration !== 24 && !['day', 'night'].includes(device.mode)),
+          anyTime: devices.filter(device => (
+            device.duration !== 24 && !['day', 'night'].includes(device.mode)
+          )),
         };
       },
 
@@ -190,24 +204,56 @@
 </script>
 
 <style lang="scss">
+  $material-shadow: 0 3px 1px -2px rgba(black, 0.2),
+                    0 2px 2px 0 rgba(black, 0.14),
+                    0 1px 5px 0 rgba(black, 0.12);
+  $border-radius: 2px;
+
+  $grey-dark: #757575;
+  $grey-medium: #EDEDED;
+  $grey-light: #FAFAFA;
+
   body {
+    background: $grey-light;
+    font-family: sans-serif;
+    height: 100vh;
     margin: 0;
   }
 
-  .block {
+  .container {
     box-sizing: border-box;
-    margin: 50px;
-    width: 50%;
+    height: 100%;
+    max-height: 100vh;
+  }
 
-    &__container {
+  .card {
+    border-radius: $border-radius;
+    box-shadow: $material-shadow;
+    display: flex;
+    flex-direction: column;
+    margin: 2%;
+    padding: 16px;
+    width: 94%;
+
+    &__title {
       display: flex;
+      font-size: 24px;
+      letter-spacing: 0;
+      line-height: 32px;
+      justify-content: space-between;
     }
   }
 
-  pre {
-    background: grey;
-    height: 100%;
-    max-height: 200px;
-    overflow: auto;
+  .code {
+    background: $grey-medium;
+    border-radius: $border-radius;
+    color: $grey-dark;
+    overflow: hidden;
+    padding: 20px;
   }
+
+  button {
+
+  }
+
 </style>
